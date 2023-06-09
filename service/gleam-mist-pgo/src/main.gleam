@@ -9,6 +9,25 @@ import mist
 import gleam/list
 import gleam/bit_string
 import database
+import gleam/json
+import gleam/dynamic
+
+pub type AddAccountBody {
+  AddAccountBody(login: String)
+}
+
+
+pub fn add_account_body_from_json(json_string: String) -> Result(AddAccountBody, json.DecodeError) {
+  let decoder = dynamic.decode1(
+    AddAccountBody,
+    dynamic.field("login", of: dynamic.string),
+  )
+
+  json.decode(from: json_string, using: decoder)
+}
+
+
+
 
 pub fn main() {
   let assert Ok(_) =
@@ -38,8 +57,10 @@ fn add_account(req: Request(mist.Body)) {
     response.new(200)
     |> mist.bit_builder_response(bit_builder.from_string({
       case bit_string.to_string(req.body) {
-        Ok(login) -> {
-          database.add_account(login)
+        Ok(body) -> {
+          // parse json
+          let assert Ok(add_account_body) = add_account_body_from_json(body)
+          database.add_account(add_account_body.login)
           "OK"
         }
         Error(err) -> {

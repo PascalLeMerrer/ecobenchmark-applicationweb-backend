@@ -4,8 +4,9 @@ import gleeunit/should
 import gleam/erlang/os.{get_env}
 import gleam/result
 import gleam/int
-import gleam/bit_string
 import gleam/option.{Some}
+import ids/uuid
+import birl/time
 
 
 pub fn connect() -> pgo.Connection {
@@ -40,23 +41,21 @@ pub fn add_account(login: String) {
   let db = connect()
 
   // INSERT INTO account(id, login, creation_date) values ($1, $2, $3);
-  let sql = "INSERT INTO account(id, login, creation_date) VALUES ($1, $2, $3)"
+  let sql = "INSERT INTO account(id, login, creation_date) VALUES ($1, $2, to_timestamp($3, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
 
   // Run the query against the PostgreSQL database
+  let assert Ok(id) = uuid.generate_v4()
+  let current_datetime = time.now()
+    |> time.to_iso8601
+
   let values = [
-    pgo.int(42),
-    pgo.text("Marcel"),
-    pgo.text("2004-10-19 10:23:54+02"),
+    pgo.text(id),
+    pgo.text(login),
+    pgo.text(current_datetime),
   ]
 
-  // This is the decoder for the value returned by the query
-  let return_type =
-    dynamic.tuple3(dynamic.string, dynamic.string, dynamic.bit_string)
-
-  let assert Ok(response) = pgo.execute(sql, db, values, return_type)
+  let assert Ok(response) = pgo.execute(sql, db, values, dynamic.dynamic)
 
   response.count
   |> should.equal(1)
-  response.rows
-  |> should.equal([#("42", "Marcel", bit_string.from_string("2004-10-19 10:23:54+02"))])
 }
