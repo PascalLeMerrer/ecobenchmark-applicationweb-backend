@@ -7,7 +7,7 @@ import gleam/int
 import gleam/option.{Some}
 import ids/uuid
 import birl/time
-
+import account.{Account}
 
 pub fn connect() -> pgo.Connection {
   //TODO: parse the URL
@@ -36,26 +36,26 @@ pub fn connect() -> pgo.Connection {
   )
 }
 
-pub fn add_account(login: String) {
+pub fn add_account(login: String) -> Account {
   // TODO avoid multiple connections
   let db = connect()
 
   // INSERT INTO account(id, login, creation_date) values ($1, $2, $3);
-  let sql = "INSERT INTO account(id, login, creation_date) VALUES ($1, $2, to_timestamp($3, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
+  let sql =
+    "INSERT INTO account(id, login, creation_date) VALUES ($1, $2, to_timestamp($3, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
 
   // Run the query against the PostgreSQL database
   let assert Ok(id) = uuid.generate_v4()
-  let current_datetime = time.now()
+  let current_datetime =
+    time.now()
     |> time.to_iso8601
 
-  let values = [
-    pgo.text(id),
-    pgo.text(login),
-    pgo.text(current_datetime),
-  ]
+  let values = [pgo.text(id), pgo.text(login), pgo.text(current_datetime)]
 
   let assert Ok(response) = pgo.execute(sql, db, values, dynamic.dynamic)
 
   response.count
   |> should.equal(1)
+
+  Account(id: id, login: login, creation_date: current_datetime)
 }

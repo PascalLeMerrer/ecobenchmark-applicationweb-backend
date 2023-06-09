@@ -11,23 +11,30 @@ import gleam/bit_string
 import database
 import gleam/json
 import gleam/dynamic
+import account.{Account}
 
 pub type AddAccountBody {
   AddAccountBody(login: String)
 }
 
 
-pub fn add_account_body_from_json(json_string: String) -> Result(AddAccountBody, json.DecodeError) {
-  let decoder = dynamic.decode1(
-    AddAccountBody,
-    dynamic.field("login", of: dynamic.string),
-  )
+pub fn add_account_body_from_json(
+  json_string: String,
+) -> Result(AddAccountBody, json.DecodeError) {
+  let decoder =
+    dynamic.decode1(AddAccountBody, dynamic.field("login", of: dynamic.string))
 
   json.decode(from: json_string, using: decoder)
 }
 
-
-
+pub fn account_to_json(account: Account) -> String {
+  json.object([
+    #("id", json.string(account.id)),
+    #("login", json.string(account.login)),
+    #("creation_date", json.string(account.creation_date)),
+  ])
+  |> json.to_string
+}
 
 pub fn main() {
   let assert Ok(_) =
@@ -50,30 +57,49 @@ pub fn main() {
   process.sleep_forever()
 }
 
-fn add_account(req: Request(mist.Body)) {
-  req
-  |> mist.read_body
-  |> result.map(fn(req) {
-    response.new(200)
-    |> mist.bit_builder_response(bit_builder.from_string({
-      case bit_string.to_string(req.body) {
-        Ok(body) -> {
-          // parse json
-          let assert Ok(add_account_body) = add_account_body_from_json(body)
+fn add_account_(body: BitString) -> Result(String, String) {
+  case bit_string.to_string(body) {
+    Ok(body_string) -> {
+      // parse json
+      case add_account_body_from_json(body_string) {
+        Ok(add_account_body) -> {
           database.add_account(add_account_body.login)
-          "OK"
+          |> account_to_json
+          |> Ok
         }
-        Error(err) -> {
-          debug(err)
-          "Error: invalid or missing value for login"
+        Error(_) -> Error("can't parse JSON")  // Convert DecodeError to string
+      }
+    }
+    Error(err) -> {
+      debug(err)
+      Error("Error: missing value for login")
+    }
+  }
+}
+
+fn add_account(req: Request(mist.Body)) {
+  
+  let request_with_body = mist.read_body(req)
+  result.map(
+    over: request_with_body,
+    with: fn(r) {
+      case add_account_(r.body) {
+        Ok(s) -> {
+          mist.bit_builder_response(
+            response.new(201),
+            bit_builder.from_string(s)
+          )
+        }
+        Error(s) -> {
+          mist.bit_builder_response(
+            response.new(400),
+            bit_builder.from_string(s)
+          )
         }
       }
-    }))
-  })
-  |> result.unwrap(
-    response.new(400)
-    |> mist.empty_response,
+    }
   )
+  |> result.unwrap(mist.empty_response(response.new(400)))
 }
 
 fn add_list(account_id: String) {
