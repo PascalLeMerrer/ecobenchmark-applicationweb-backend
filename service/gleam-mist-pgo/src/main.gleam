@@ -1,41 +1,20 @@
+import account.{Account}
+import database
 import gleam/bit_builder
+import gleam/bit_string
+import gleam/dynamic
 import gleam/erlang/process
 import gleam/http.{Get, Post}
 import gleam/http/request.{Request, get_query}
 import gleam/http/response
 import gleam/io.{debug}
-import gleam/result.{unwrap}
-import mist
-import gleam/list
-import gleam/bit_string
-import database
 import gleam/json
-import gleam/dynamic
-import account.{Account}
+import gleam/list
 import gleam/pgo
-
-pub type AddAccountBody {
-  AddAccountBody(login: String)
-}
-
-
-pub fn add_account_body_from_json(
-  json_string: String,
-) -> Result(AddAccountBody, json.DecodeError) {
-  let decoder =
-    dynamic.decode1(AddAccountBody, dynamic.field("login", of: dynamic.string))
-
-  json.decode(from: json_string, using: decoder)
-}
-
-pub fn account_to_json(account: Account) -> String {
-  json.object([
-    #("id", json.string(account.id)),
-    #("login", json.string(account.login)),
-    #("creation_date", json.string(account.creation_date)),
-  ])
-  |> json.to_string
-}
+import gleam/result.{unwrap}
+import list as task_list
+import mist
+import gleam/function.{curry2, curry3}
 
 pub fn main() {
   let db = database.connect()
@@ -45,8 +24,8 @@ pub fn main() {
       8080,
       mist.handler_func(fn(req) {
         case req.method, request.path_segments(req) {
-          Post, ["api", "accounts"] -> create(db, req, add_account)
-          Post, ["api", "accounts", account_id, "lists"] -> add_list(account_id)
+          Post, ["api", "accounts"] -> create(req, curry2(add_account)(db))
+          Post, ["api", "accounts", account_id, "lists"] -> create(req, curry3(add_list)(account_id)(db))
           Post, ["api", "lists", list_id, "tasks"] -> add_task_to_list(list_id)
           Get, ["api", "accounts", account_id, "lists"] ->
             get_lists(account_id, unwrap(get_query(req), []))
@@ -60,35 +39,15 @@ pub fn main() {
   process.sleep_forever()
 }
 
-fn add_account(db: pgo.Connection, body: BitString) -> Result(String, String) {
-  case bit_string.to_string(body) {
-    Ok(body_string) -> {
-      // parse json
-      case add_account_body_from_json(body_string) {
-        Ok(add_account_body) -> {
-          database.add_account(db, add_account_body.login)
-          |> account_to_json
-          |> Ok
-        }
-        Error(_) -> Error("can't parse JSON")  // Convert DecodeError to string
-      }
-    }
-    Error(err) -> {
-      debug(err)
-      Error("Error: missing value for login")
-    }
-  }
-}
-
-fn create(db: pgo.Connection, req: Request(mist.Body), 
-          fun: fn(pgo.Connection, BitString) -> Result(String, String) ) 
+fn create(req: Request(mist.Body), 
+          fun: fn(BitString) -> Result(String, String) ) 
   {
   
   let request_with_body = mist.read_body(req)
   result.map(
     over: request_with_body,
     with: fn(r) {
-      case fun(db,r.body) {
+      case fun(r.body) {
         Ok(s) -> {
           mist.bit_builder_response(
             response.new(201),
@@ -107,12 +66,74 @@ fn create(db: pgo.Connection, req: Request(mist.Body),
   |> result.unwrap(mist.empty_response(response.new(400)))
 }
 
-fn add_list(account_id: String) {
-  response.new(200)
-  |> mist.bit_builder_response(bit_builder.from_string(
-    "TODO add_list" <> account_id,
-  ))
+// add account
+
+fn add_account( db: pgo.Connection, body: BitString) -> Result(String, String) {
+  case bit_string.to_string(body) {
+    Ok(body_string) -> {
+      // parse json
+      case add_account_body_from_json(body_string) {
+        Ok(add_account_body) -> {
+          database.add_account(db, add_account_body.login)
+          |> account.to_json
+          |> Ok
+        }
+        Error(_) -> Error("can't parse JSON")  // Convert DecodeError to string
+      }
+    }
+    Error(err) -> {
+      Error("Error: missing value for login")
+    }
+  }
 }
+
+pub type AddAccountBody {
+  AddAccountBody(login: String)
+}
+
+pub fn add_account_body_from_json(
+  json_string: String,
+) -> Result(AddAccountBody, json.DecodeError) {
+  let decoder =
+    dynamic.decode1(AddAccountBody, dynamic.field("login", of: dynamic.string))
+
+  json.decode(from: json_string, using: decoder)
+}
+
+// add list
+
+fn add_list(account_id: String, db: pgo.Connection, body: BitString) -> Result(String, String) {
+  case bit_string.to_string(body) {
+    Ok(body_string) -> {
+      case add_list_body_from_json(body_string) {
+        Ok(add_list_body) -> {
+          database.add_list(db, account_id, add_list_body.name)
+          |> task_list.to_json
+          |> Ok
+        }
+        Error(_) -> Error("can't parse JSON")  // Convert DecodeError to string
+      }
+    }
+    Error(err) -> {
+      Error("Error: missing value for list name")
+    }
+  }
+}
+
+pub type AddListBody {
+  AddListBody(name: String)
+}
+
+pub fn add_list_body_from_json(
+  json_string: String,
+) -> Result(AddListBody, json.DecodeError) {
+  let decoder =
+    dynamic.decode1(AddListBody, dynamic.field("name", of: dynamic.string))
+
+  json.decode(from: json_string, using: decoder)
+}
+
+// add task to list
 
 fn add_task_to_list(list_id: String) {
   response.new(200)

@@ -8,6 +8,7 @@ import gleam/option.{Some}
 import ids/uuid
 import birl/time
 import account.{Account}
+import list.{List}
 
 pub fn connect() -> pgo.Connection {
   //TODO: parse the URL
@@ -42,7 +43,6 @@ pub fn add_account(db: pgo.Connection, login: String) -> Account {
   let sql =
     "INSERT INTO account(id, login, creation_date) VALUES ($1, $2, to_timestamp($3, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
 
-  // Run the query against the PostgreSQL database
   let assert Ok(id) = uuid.generate_v4()
   let current_datetime =
     time.now()
@@ -56,4 +56,25 @@ pub fn add_account(db: pgo.Connection, login: String) -> Account {
   |> should.equal(1)
 
   Account(id: id, login: login, creation_date: current_datetime)
+}
+
+pub fn add_list(db: pgo.Connection, account_id: String, name: String) -> List {
+  
+  // pgo doesn't support yet timestampz so we give a string to PG and ask it to convert it to timestampz
+  let sql =
+    "INSERT INTO list(id, account_id, name, creation_date) VALUES ($1, $2, $3, to_timestamp($4, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
+
+  let assert Ok(id) = uuid.generate_v4()
+  let current_datetime =
+    time.now()
+    |> time.to_iso8601
+
+  let values = [pgo.text(id), pgo.text(account_id), pgo.text(name), pgo.text(current_datetime)]
+
+  let assert Ok(response) = pgo.execute(sql, db, values, dynamic.dynamic)
+
+  response.count
+  |> should.equal(1)
+
+  List(id: id, account_id: account_id, name: name, creation_date: current_datetime)
 }
