@@ -36,11 +36,9 @@ pub fn connect() -> pgo.Connection {
   )
 }
 
-pub fn add_account(login: String) -> Account {
-  // TODO avoid multiple connections
-  let db = connect()
-
-  // INSERT INTO account(id, login, creation_date) values ($1, $2, $3);
+pub fn add_account(db: pgo.Connection, login: String) -> Account {
+  
+  // pgo doesn't support yet timestampz so we give a string to PG and ask it to convert it to timestampz
   let sql =
     "INSERT INTO account(id, login, creation_date) VALUES ($1, $2, to_timestamp($3, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
 

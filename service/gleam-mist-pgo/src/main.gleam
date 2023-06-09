@@ -12,6 +12,7 @@ import database
 import gleam/json
 import gleam/dynamic
 import account.{Account}
+import gleam/pgo
 
 pub type AddAccountBody {
   AddAccountBody(login: String)
@@ -37,12 +38,14 @@ pub fn account_to_json(account: Account) -> String {
 }
 
 pub fn main() {
+  let db = database.connect()
+
   let assert Ok(_) =
     mist.serve(
       8080,
       mist.handler_func(fn(req) {
         case req.method, request.path_segments(req) {
-          Post, ["api", "accounts"] -> add_account(req)
+          Post, ["api", "accounts"] -> create(db, req, add_account)
           Post, ["api", "accounts", account_id, "lists"] -> add_list(account_id)
           Post, ["api", "lists", list_id, "tasks"] -> add_task_to_list(list_id)
           Get, ["api", "accounts", account_id, "lists"] ->
@@ -57,13 +60,13 @@ pub fn main() {
   process.sleep_forever()
 }
 
-fn add_account_(body: BitString) -> Result(String, String) {
+fn add_account(db: pgo.Connection, body: BitString) -> Result(String, String) {
   case bit_string.to_string(body) {
     Ok(body_string) -> {
       // parse json
       case add_account_body_from_json(body_string) {
         Ok(add_account_body) -> {
-          database.add_account(add_account_body.login)
+          database.add_account(db, add_account_body.login)
           |> account_to_json
           |> Ok
         }
@@ -77,13 +80,15 @@ fn add_account_(body: BitString) -> Result(String, String) {
   }
 }
 
-fn add_account(req: Request(mist.Body)) {
+fn create(db: pgo.Connection, req: Request(mist.Body), 
+          fun: fn(pgo.Connection, BitString) -> Result(String, String) ) 
+  {
   
   let request_with_body = mist.read_body(req)
   result.map(
     over: request_with_body,
     with: fn(r) {
-      case add_account_(r.body) {
+      case fun(db,r.body) {
         Ok(s) -> {
           mist.bit_builder_response(
             response.new(201),
