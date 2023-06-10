@@ -9,6 +9,7 @@ import ids/uuid
 import birl/time
 import account.{Account}
 import list.{List}
+import task.{Task}
 
 pub fn connect() -> pgo.Connection {
   //TODO: parse the URL
@@ -77,4 +78,25 @@ pub fn add_list(db: pgo.Connection, account_id: String, name: String) -> List {
   |> should.equal(1)
 
   List(id: id, account_id: account_id, name: name, creation_date: current_datetime)
+}
+
+pub fn add_task(db: pgo.Connection, list_id: String, name: String, description: String) -> Task {
+  
+  // pgo doesn't support yet timestampz so we give a string to PG and ask it to convert it to timestampz
+  let sql =
+    "INSERT INTO task(id, list_id, name, description, creation_date) VALUES ($1, $2, $3, $4, to_timestamp($5, 'YYY-MM-DDTHH24:MI:SS.FF3+TZH:TZM'))"
+
+  let assert Ok(id) = uuid.generate_v4()
+  let current_datetime =
+    time.now()
+    |> time.to_iso8601
+
+  let values = [pgo.text(id), pgo.text(list_id), pgo.text(name), pgo.text(description), pgo.text(current_datetime)]
+
+  let assert Ok(response) = pgo.execute(sql, db, values, dynamic.dynamic)
+
+  response.count
+  |> should.equal(1)
+
+  Task(id: id, list_id: list_id, name: name, description: description, creation_date: current_datetime)
 }

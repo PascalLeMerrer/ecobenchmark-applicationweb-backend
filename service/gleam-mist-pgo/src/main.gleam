@@ -13,6 +13,7 @@ import gleam/list
 import gleam/pgo
 import gleam/result.{unwrap}
 import list as task_list
+import task
 import mist
 import gleam/function.{curry2, curry3}
 
@@ -26,7 +27,7 @@ pub fn main() {
         case req.method, request.path_segments(req) {
           Post, ["api", "accounts"] -> create(req, curry2(add_account)(db))
           Post, ["api", "accounts", account_id, "lists"] -> create(req, curry3(add_list)(account_id)(db))
-          Post, ["api", "lists", list_id, "tasks"] -> add_task_to_list(list_id)
+          Post, ["api", "lists", list_id, "tasks"] -> create(req, curry3(add_task_to_list)(list_id)(db))  
           Get, ["api", "accounts", account_id, "lists"] ->
             get_lists(account_id, unwrap(get_query(req), []))
           Get, ["api", "stats"] -> get_stats()
@@ -135,12 +136,42 @@ pub fn add_list_body_from_json(
 
 // add task to list
 
-fn add_task_to_list(list_id: String) {
-  response.new(200)
-  |> mist.bit_builder_response(bit_builder.from_string(
-    "TODO add_task_to_list:" <> list_id,
-  ))
+pub type AddTaskBody {
+  AddTaskBody(name: String, description: String)
 }
+
+pub fn add_task_body_from_json(
+  json_string: String,
+) -> Result(AddTaskBody, json.DecodeError) {
+  let decoder =
+    dynamic.decode2(AddTaskBody, 
+      dynamic.field("name", of: dynamic.string), 
+      dynamic.field("description", of: dynamic.string)
+      )
+
+  json.decode(from: json_string, using: decoder)
+}
+
+
+fn add_task_to_list(list_id: String, db: pgo.Connection, body: BitString) -> Result(String, String) {
+  case bit_string.to_string(body) {
+    Ok(body_string) -> {
+      case add_task_body_from_json(body_string) {
+        Ok(add_task_body) -> {
+          database.add_task(db, list_id, add_task_body.name, add_task_body.description)
+          |> task.to_json
+          |> Ok
+        }
+        Error(_) -> Error("can't parse JSON")  // Convert DecodeError to string
+      }
+    }
+    Error(err) -> {
+      Error("Error: missing value for task name or description")
+    }
+  }
+}
+
+// get lists
 
 fn get_lists(account_id: String, query_params: List(#(String, String))) {
   let page: String =
