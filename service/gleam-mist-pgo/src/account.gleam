@@ -4,7 +4,7 @@ pub type Account {
   Account(id: String, login: String, creation_date: String)
 }
 
-pub fn to_json(account: Account) -> String {
+pub fn to_string(account: Account) -> String {
   json.object([
     #("id", json.string(account.id)),
     #("login", json.string(account.login)),
